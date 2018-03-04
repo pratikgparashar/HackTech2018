@@ -1,23 +1,3 @@
-# import cv2
-
-# cv2.namedWindow("preview")
-# vc = cv2.VideoCapture(0)
-
-# if vc.isOpened(): # try to get the first frame
-#     rval, frame = vc.read()
-# else:
-#     rval = False
-
-# while rval:
-#     cv2.imshow("preview", frame)
-#     rval, frame = vc.read()
-# #     key = cv2.waitKey(20)
-#   if key == 27: # exit on ESC
-#       break
-
-# cv2.destroyWindow("preview")
-# vc.release()
-
 from azure.storage.blob import ContentSettings
 from azure.storage.blob import BlockBlobService
 from azure.storage.blob import PublicAccess
@@ -26,11 +6,17 @@ from azure.cognitiveservices.vision.customvision.training import training_api
 from azure.cognitiveservices.vision.customvision.prediction import prediction_endpoint
 from azure.cognitiveservices.vision.customvision.prediction.prediction_endpoint import models
 
+import http.client, urllib.request, urllib.parse, urllib.error, base64
+
 import cv2
 import math
+import json
 import os
 import random
 import _thread
+import requests
+import sys
+from twilio.rest import Client
 
 
 #prediction
@@ -42,6 +28,35 @@ predictor = prediction_endpoint.PredictionEndpoint(prediction_key)
 acct_name="framestore"
 acct_key="zBqpNlcVjCuhzfGWIt02pV8i4EgCwY6XYZkrKqNf0nvb9teFSOC2xpyAjh8D5fykSqpN9jLzjhrUxHRzJ+6KNA=="
 block_blob_service = BlockBlobService(account_name=acct_name, account_key=acct_key)
+event_cap = False
+
+def get_iter_id():
+    headers = {
+    # Request headers
+    'Training-key': '50c2ce1537da463bb1bb96d3833e5607',
+    }
+
+    params = urllib.parse.urlencode({
+    })
+
+    try:
+        conn = http.client.HTTPSConnection('southcentralus.api.cognitive.microsoft.com')
+        conn.request("GET", "/customvision/v1.0/Training/projects/05bed582-9f11-4906-83a0-e9cae717ec84/iterations?%s" % params, "{body}", headers)
+        response = conn.getresponse()
+        data = response.read()
+        print(data)
+        dic=json.loads(data.decode('utf-8'))
+        #print(dic)
+        iter_id=dic[len(dic)-2]['Id']
+        print(iter_id)
+
+        conn.close()
+        return iter_id
+    except Exception as e:
+        print("[Errno {0}] {1}".format(e.errno, e.strerror))
+
+    
+
 
 
 def upload_img(imagesFolder,filename):
@@ -81,18 +96,102 @@ def printStatus(response, **kwargs):
     print("response code {}".format(response.status_code))
     print("response text {}".format(response.content))  
 
-def get_pred(imagesFolder, temp_name):
+
+
+
+account = "ACb0f5b60fdd5c6cc544eefaaf5b974a95"
+token = "b2c6b7a95c6a9dd1e598a4608aaff22e"
+client = Client(account, token)
+
+top=0
+left=0
+width=0
+height=0
+anger=0
+frames_c=0
+min_top = sys.maxsize
+min_left = sys.maxsize
+new_anger = 0
+# response from api
+
+def find_min_distance(json_entry):
+    global min_top
+    global min_left
+    if(min_top>abs(top-json_entry['faceRectangle']['top']) and min_left>abs(left-json_entry['faceRectangle']['left'])):
+        min_top = abs(top-json_entry['faceRectangle']['top'])
+        min_left = abs(left-json_entry['faceRectangle']['left'])
+        return True
+    return False
+
+def get_alert(json_object, tag_data):
+    # print(json_object)
+    # print(tag_data)
+    global top
+    global left
+    global width
+    global height
+    global anger
+    global frames_c
+    global new_anger
+    global event_cap
+    for json_entry in json_object:
+        # print(json_entry)
+        if frames_c == 0:
+            if( anger <= json_entry['faceAttributes']['emotion']['anger']): 
+                anger = json_entry['faceAttributes']['emotion']['anger']
+                top = json_entry['faceRectangle']['top']
+                left = json_entry['faceRectangle']['left']
+                width = json_entry['faceRectangle']['width']
+                height = json_entry['faceRectangle']['height']
+        else:
+            if (find_min_distance(json_entry)):
+                new_anger = json_entry['faceAttributes']['emotion']['anger']
+    frames_c += 1
+    anger += new_anger
+    if(anger >= 0.2 and ((tag_data["Gun"] * tag_data["Person"]) >= 0.05 or (tag_data["Knife"] * tag_data["Person"] ) >= 0.05)):
+        message = client.messages.create(to="+13232877405", from_="+19093456569",
+                                     body="High Alert..There might. be person with potential weapon and intent to hurt people.")
+        event_cap = True
+    elif((tag_data["Gun"] * tag_data["Person"] ) >= 0.05 or (tag_data["Knife"] * tag_data["Person"] ) >= 0.05):
+        message = client.messages.create(to="+13232877405", from_="+19093456569",
+                                     body="Alert..There might be person with potential deadly weapon.") 
+        event_cap = True
+
+
+def get_pred(imagesFolder, temp_name,iter_id):
 
     global res
     img_link=upload_img(imagesFolder,temp_name)
-    # res = predictor.predict_image_url(key1, key2, url=test_img_url)   
-    res = predictor.predict_image_url("05bed582-9f11-4906-83a0-e9cae717ec84", "2ceb6d39-03ee-4fc8-8603-fd7ab2501af1", url=img_link)
+    emotion_recognition_url = "https://westcentralus.api.cognitive.microsoft.com/face/v1.0/detect?returnFaceAttributes=emotion"
+    headers  = {'Ocp-Apim-Subscription-Key': "f771b37a021647189f81eb7ca157e447"}
+    response = requests.post(emotion_recognition_url, headers=headers, json={'Url': img_link})
+    response.raise_for_status()
+    analysis = response.json()
 
+    res = predictor.predict_image_url("05bed582-9f11-4906-83a0-e9cae717ec84",iter_id, url=img_link)
+    preds = {}
+    for prediction in res.predictions:
+
+        preds[prediction.tag] = prediction.probability
+        print ("\t" + prediction.tag + ": {0:.2f}%".format(prediction.probability * 100))
+    get_alert(analysis, preds)      
+
+    """  Call to calculatye score """
+def get_out():      
+    cv2.destroyWindow("preview")
+    # vc.release()      
+    cap.release()
+    print("Alert Generated .. Notification Setn to Police.. !") 
+
+
+iter_id=get_iter_id()
+iter_id ="0f761fd-61c8-469d-998e-13a74655b8ec"
 videoFile = "capture.avi"
 imagesFolder = os.path.join("./frames")
 cap = cv2.VideoCapture(0)
 frameRate = 5 #frame rate
-cv2.namedWindow("preview")
+cv2.namedWindow("preview",cv2.WINDOW_NORMAL)
+cv2.resizeWindow('preview', 500,350)
 n = 100
 async_list = []
 res = None;
@@ -102,20 +201,16 @@ while(cap.isOpened()):
     cv2.imshow("preview", frame)
     key = cv2.waitKey(20)
     if key == 27: # exit on ESC
-        break
+        get_out()
     if (ret != True):
-        break
-    #print(frameId)
+        get_out()
+    if event_cap:
+        get_out()   
     if (frameId % math.floor(frameRate) == 0):
         temp_name="image_" +  str(int(frameId))+ str(random.randrange(0, 101, 2)) + ".jpg"
         filename = imagesFolder + "/"+temp_name
         cv2.imwrite(filename, frame)
-        print("Aaaaaa")
-        
-        print(filename)
-        # test_img_url=img_link
-        # results = predictor.predict_image_url("05bed582-9f11-4906-83a0-e9cae717ec84", "9bfe13f5-8db7-4831-a47b-6e7f5d2e1ad1", url=test_img_url)
-        _thread.start_new_thread( get_pred, (imagesFolder, temp_name, ))
+        _thread.start_new_thread( get_pred, (imagesFolder, temp_name,iter_id,))
         while(res == None):
             ret, frame = cap.read()
             cv2.imshow("preview", frame)
@@ -125,27 +220,9 @@ while(cap.isOpened()):
             if (ret != True):
                 get_out()
 
-        for prediction in res.predictions:
-            print ("\t" + prediction.tag + ": {0:.2f}%".format(prediction.probability * 100))       
+                
         
         res = None
-        # import grequests
-        # params = {'url': img_link}
-        # headers = {'Content-type' : 'application/json',
-        #   'Prediction-Key' : 'a37bf842c80a4380b7cd7ff45abec38d'}
-
-        # print("@@@@@@@@@")
-        # url= ""
-        # grequests.post('https://southcentralus.api.cognitive.microsoft.com/customvision/v1.1/Prediction/05bed582-9f11-4906-83a0-e9cae717ec84/image?iterationId=9bfe13f5-8db7-4831-a47b-6e7f5d2e1ad1', params=params, headers=headers, callback=printStatus)   
-        # d = get_async_web_response('https://southcentralus.api.cognitive.microsoft.com/customvision/v1.1/Prediction/05bed582-9f11-4906-83a0-e9cae717ec84/image?iterationId=9bfe13f5-8db7-4831-a47b-6e7f5d2e1ad1', 'POST', params=params, headers=headers, callback=printStatus)
-        # async_list.add(d);
     n -= 1
     if(n == 0):
         n = 100     
-
-        
-def get_out():      
-    cv2.destroyWindow("preview")
-    # vc.release()      
-    cap.release()
-    print("Done!")  
