@@ -20,20 +20,20 @@ from twilio.rest import Client
 
 
 #prediction
-training_key ="50c2ce1537da463bb1bb96d3833e5607"
-prediction_key = "a37bf842c80a4380b7cd7ff45abec38d"
+training_key ="#{Your Training Key}"
+prediction_key = "#{Your Prediction Key}"
 predictor = prediction_endpoint.PredictionEndpoint(prediction_key)
 
 #Image Upload
 acct_name="framestore"
-acct_key="zBqpNlcVjCuhzfGWIt02pV8i4EgCwY6XYZkrKqNf0nvb9teFSOC2xpyAjh8D5fykSqpN9jLzjhrUxHRzJ+6KNA=="
+acct_key="#{Your Azzure Cloud Account Key}"
 block_blob_service = BlockBlobService(account_name=acct_name, account_key=acct_key)
 event_cap = False
 
 def get_iter_id():
     headers = {
     # Request headers
-    'Training-key': '50c2ce1537da463bb1bb96d3833e5607',
+    'Training-key': '#{Your Key}',
     }
 
     params = urllib.parse.urlencode({
@@ -99,8 +99,8 @@ def printStatus(response, **kwargs):
 
 
 
-account = "ACb0f5b60fdd5c6cc544eefaaf5b974a95"
-token = "b2c6b7a95c6a9dd1e598a4608aaff22e"
+account = "#{twilio_account}"
+token = "#{twilio_token}"
 client = Client(account, token)
 
 top=0
@@ -163,12 +163,12 @@ def get_pred(imagesFolder, temp_name,iter_id):
     global res
     img_link=upload_img(imagesFolder,temp_name)
     emotion_recognition_url = "https://westcentralus.api.cognitive.microsoft.com/face/v1.0/detect?returnFaceAttributes=emotion"
-    headers  = {'Ocp-Apim-Subscription-Key': "f771b37a021647189f81eb7ca157e447"}
+    headers  = {'Ocp-Apim-Subscription-Key': "#{prediction key}"}
     response = requests.post(emotion_recognition_url, headers=headers, json={'Url': img_link})
     response.raise_for_status()
     analysis = response.json()
 
-    res = predictor.predict_image_url("05bed582-9f11-4906-83a0-e9cae717ec84",iter_id, url=img_link)
+    res = predictor.predict_image_url("#{customvision_api_key}",iter_id, url=img_link)
     preds = {}
     for prediction in res.predictions:
 
@@ -181,7 +181,7 @@ def get_out():
     cv2.destroyWindow("preview")
     # vc.release()      
     cap.release()
-    print("Alert Generated .. Notification Setn to Police.. !") 
+    print("Alert Generated .. Notification Sent to Police.. !") 
 
 
 iter_id=get_iter_id()

@@ -1,7 +1,7 @@
 import requests
 import json
 
-subscription_key = "c314cd02a604410c906666e552b8e8e1"
+subscription_key = "#{Your Key}"
 assert subscription_key
 
 vision_base_url = "https://eastus.api.cognitive.microsoft.com/vision/v1.0/"
@@ -26,7 +26,7 @@ for each in word_infos:
 	final_sentence+=each["text"]+" "
 print(final_sentence)
 
-subscription_key="5d162a1f02724f6daf4489f4220413a4"
+subscription_key="#{Your Key}"
 assert subscription_key
 text_analytics_base_url="https://westcentralus.api.cognitive.microsoft.com/text/analytics/v2.0/"
 key_phrase_api_url = text_analytics_base_url+"keyPhrases"
